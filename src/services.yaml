@@ -1,0 +1,5 @@
+reconnect:
+  target:
+    entity:
+      integration: youtube_lounge
+      domain: media_player

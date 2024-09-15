@@ -1,0 +1,24 @@
+{
+  "domain": "youtube_lounge",
+  "name": "YouTube Lounge",
+  "version": "0.0.1",
+  "config_flow": true,
+  "documentation": "https://www.home-assistant.io/integrations/youtube_lounge",
+  "integration_type": "device",
+  "requirements": [
+    "pyytlounge==2.0.0",
+    "aiogoogle==5.1.0"
+  ],
+  "ssdp": [
+    {
+      "st": "urn:dial-multiscreen-org:service:dial:1"
+    }
+  ],
+  "zeroconf": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@FabioGNR"
+  ],
+  "iot_class": "cloud_push"
+}

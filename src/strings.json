@@ -1,0 +1,44 @@
+{
+  "config": {
+    "step": {
+      "confirm_discovery": {
+        "title": "Set up {name}: confirm",
+        "description": "Do you want to set up {name}?"
+      },
+      "google_api_key": {
+        "title": "Set up {name}: Google API",
+        "description": "Supply an API key to retrieve video information from YouTube",
+        "data": {
+          "google_api_key": "YouTube V3 Data Api Key"
+        },
+        "data_description": {
+          "google_api_key": "This API key is used to retrieve information about the playing video. See https://developers.google.com/youtube/v3/getting-started for how to get one."
+        }
+      },
+      "pair": {
+        "title": "YouTube pairing code",
+        "description": "Pair with a YouTube lounge screen through a pairing code",
+        "data": {
+          "pairing_code": "Pairing code"
+        },
+        "data_description": {
+          "pairing_code": "The pairing code that can be found in the \"Link with TV Code\" menu."
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+      "unknown": "[%key:common::config_flow::error::unknown%]"
+    },
+    "abort": {
+      "already_configured": "[%key:common::config_flow::abort::already_configured_device%]"
+    }
+  },
+  "services": {
+    "reconnect": {
+      "name": "Reconnect",
+      "description": "Refresh authorization for when the connection is stuck."
+    }
+  }
+}
