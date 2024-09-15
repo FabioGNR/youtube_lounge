@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from aiogoogle import Aiogoogle
 from aiogoogle.excs import HTTPError
 from pyytlounge import YtLoungeApi
-from pyytlounge.dial import try_from_dial
+from pyytlounge.dial import get_screen_id_from_dial
 
 import voluptuous as vol
 
@@ -134,7 +134,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             "Found DIAL device through SSDP, checking if YouTube is available..."
         )
 
-        dial_result = await try_from_dial(discovery_info.ssdp_location)
+        dial_result = await get_screen_id_from_dial(discovery_info.ssdp_location)
         if dial_result:
             _LOGGER.info(
                 "Found DIAL device through SSDP, YouTube is available: %s",
