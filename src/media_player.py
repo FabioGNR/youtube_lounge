@@ -35,7 +35,7 @@ async def async_setup_entry(
     api: YtLoungeApi = hass.data[DOMAIN][entry.entry_id]
 
     api_key: str | None = entry.data.get("google_api_key")
-    async_add_entities([YtMediaPlayer(api, api_key)])
+    async_add_entities([YtMediaPlayer(entry.title, api, api_key)])
 
     platform = async_get_current_platform()
 
@@ -73,8 +73,9 @@ SUBSCRIBE_RETRY_INTERVAL = 1
 class YtMediaPlayer(MediaPlayerEntity):
     """Media player entity for YouTube Lounge integration."""
 
-    def __init__(self, api: YtLoungeApi, api_key: str | None) -> None:
+    def __init__(self, title: str, api: YtLoungeApi, api_key: str | None) -> None:
         """Initialize media player entity with api and optional api key."""
+        self._title = title
         self._api = api
         self._google_api_key = api_key
         self._yt_api = None
@@ -227,7 +228,7 @@ class YtMediaPlayer(MediaPlayerEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._api.auth.screen_id)},
             manufacturer="YouTube",
-            name=self._api.screen_name,
+            name=f"YouTube on {self._title}",
         )
 
     @property
