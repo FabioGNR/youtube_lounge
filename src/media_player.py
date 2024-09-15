@@ -35,7 +35,7 @@ async def async_setup_entry(
     api: YtLoungeApi = hass.data[DOMAIN][entry.entry_id]
 
     api_key: str | None = entry.data.get("google_api_key")
-    async_add_entities([YtMediaPlayer(entry.title, api, api_key)])
+    async_add_entities([YtMediaPlayer(entry, api, api_key)])
 
     platform = async_get_current_platform()
 
@@ -73,9 +73,11 @@ SUBSCRIBE_RETRY_INTERVAL = 1
 class YtMediaPlayer(MediaPlayerEntity):
     """Media player entity for YouTube Lounge integration."""
 
-    def __init__(self, title: str, api: YtLoungeApi, api_key: str | None) -> None:
+    def __init__(
+        self, entry: ConfigEntry, api: YtLoungeApi, api_key: str | None
+    ) -> None:
         """Initialize media player entity with api and optional api key."""
-        self._title = title
+        self._entry = entry
         self._api = api
         self._google_api_key = api_key
         self._yt_api = None
@@ -85,18 +87,18 @@ class YtMediaPlayer(MediaPlayerEntity):
         self._video_info: _VideoInfo | None = None
         self._subscription: Task | None = None
 
-    async def __setup_youtube_api(self):
+    async def _setup_youtube_api(self):
         async with Aiogoogle(api_key=self._google_api_key) as aiogoogle:
             self._yt_api = await aiogoogle.discover("youtube", "v3")
         if self._state and self._state.videoId:
-            await self.__update_video_snippet()
+            await self._update_video_snippet()
             self.async_write_ha_state()
 
-    async def __subscription_task(self):
+    async def _subscription_task(self):
         while True:
             try:
                 LOGGER.debug("Starting subscribe and keep alive")
-                await self.__subscribe_and_keep_alive()
+                await self._subscribe_and_keep_alive()
             except asyncio.CancelledError:
                 break
             except:
@@ -106,20 +108,20 @@ class YtMediaPlayer(MediaPlayerEntity):
                 )
                 await asyncio.sleep(ERROR_RETRY_INTERVAL)
 
-    async def __subscribe_and_keep_alive(self):
+    async def _subscribe_and_keep_alive(self):
         if not self._api.connected():
             await self._api.connect()
 
         while True:
             while not self._api.connected():
                 LOGGER.debug("subscribe_and_keep_alive: reconnecting")
-                await self.__new_state(None)
+                await self._new_state(None)
                 await asyncio.sleep(CONNECT_RETRY_INTERVAL)
                 if not self._api.linked():
                     await self._api.refresh_auth()
                 await self._api.connect()
             LOGGER.debug("subscribe_and_keep_alive: subscribing")
-            await self._api.subscribe(self.__new_state)
+            await self._api.subscribe(self._new_state)
             await asyncio.sleep(SUBSCRIBE_RETRY_INTERVAL)
 
     async def manual_reconnect(self):
@@ -133,25 +135,31 @@ class YtMediaPlayer(MediaPlayerEntity):
             LOGGER.debug("manual_reconnect: refresh auth %s", refreshed)
             connected = await self._api.connect()
             LOGGER.debug("manual_reconnect: connect %s", connected)
-        self._subscription = self.hass.async_create_task(self.__subscription_task())
+        self._subscription = self._entry.async_create_background_task(
+            self.hass, self._subscription_task(), "Subscription"
+        )
 
     async def async_added_to_hass(self) -> None:
         """Connect and subscribe to dispatcher signals and state updates."""
         await super().async_added_to_hass()
 
-        self._subscription = self.hass.async_create_task(self.__subscription_task())
+        self._subscription = self._entry.async_create_background_task(
+            self.hass, self._subscription_task(), "Subscription"
+        )
 
         if self._google_api_key:
-            self.hass.async_create_task(self.__setup_youtube_api())
+            self._entry.async_create_task(
+                self.hass, self._setup_youtube_api(), "Setup youtube api"
+            )
 
-        self.async_on_remove(self.__removed_from_hass)
+        self.async_on_remove(self._removed_from_hass)
 
-    def __removed_from_hass(self) -> None:
+    def _removed_from_hass(self) -> None:
         if self._subscription:
             self._subscription.cancel()
             self._subscription = None
 
-    async def __update_video_snippet(self):
+    async def _update_video_snippet(self):
         if self._yt_api and self._state and self._state.videoId:
             if self._video_info and self._state.videoId == self._video_info.id:
                 return  # already have this video info
@@ -166,10 +174,10 @@ class YtMediaPlayer(MediaPlayerEntity):
         else:
             self._video_info = None
 
-    async def __new_state(self, state: PlaybackState | None):
+    async def _new_state(self, state: PlaybackState | None):
         self._state_time = homeassistant.util.dt.utcnow()
         self._state = state
-        await self.__update_video_snippet()
+        await self._update_video_snippet()
         self.async_write_ha_state()
 
     @property
@@ -228,7 +236,7 @@ class YtMediaPlayer(MediaPlayerEntity):
         return DeviceInfo(
             identifiers={(DOMAIN, self._api.auth.screen_id)},
             manufacturer="YouTube",
-            name=f"YouTube on {self._title}",
+            name=f"YouTube on {self._entry.title}",
         )
 
     @property
