@@ -154,6 +154,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             return self.async_show_form(
                 step_id="confirm_discovery",
                 description_placeholders={"name": self.connect_result.screen_name},
+                last_step=False,
             )
 
         return await self.async_step_google_api_key()
@@ -172,6 +173,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if user_input is None or "google_api_key" not in user_input:
             return self.async_show_form(
                 step_id="google_api_key",
+                description_placeholders={"name": self.connect_result.screen_name},
                 data_schema=STEP_GOOGLE_API_DATA_SCHEMA,
                 last_step=True,
             )
@@ -198,6 +200,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="google_api_key",
+            description_placeholders={"name": self.connect_result.screen_name},
             data_schema=STEP_GOOGLE_API_DATA_SCHEMA,
             errors=errors,
             last_step=True,
@@ -236,7 +239,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ) -> FlowResult:
         """Handle the pairing step."""
         if user_input is None or "pairing_code" not in user_input:
-            return self.async_show_form(data_schema=STEP_PAIR_DATA_SCHEMA)
+            return self.async_show_form(
+                data_schema=STEP_PAIR_DATA_SCHEMA,
+                last_step=False,
+            )
 
         errors = {}
 
@@ -256,7 +262,11 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             self._abort_if_unique_id_configured()
             return await self.async_step_google_api_key(user_input)
 
-        return self.async_show_form(data_schema=STEP_PAIR_DATA_SCHEMA, errors=errors)
+        return self.async_show_form(
+            data_schema=STEP_PAIR_DATA_SCHEMA,
+            errors=errors,
+            last_step=False,
+        )
 
 
 class CannotConnect(HomeAssistantError):
