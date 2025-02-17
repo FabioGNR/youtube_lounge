@@ -1,6 +1,7 @@
 """The YouTube Lounge integration."""
 
 from __future__ import annotations
+from contextlib import AsyncExitStack
 
 from pyytlounge import YtLoungeApi
 
@@ -19,7 +20,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})
 
+    stack = AsyncExitStack()
+
     api = YtLoungeApi(device_name(hass), logger=LOGGER)
+    await stack.enter_async_context(api)
+
     api.auth.deserialize(entry.data["auth"])
 
     if not api.paired():
