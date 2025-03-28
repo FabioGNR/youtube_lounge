@@ -3,3 +3,13 @@ reconnect:
     entity:
       integration: youtube_lounge
       domain: media_player
+select_subtitle_track:
+  target:
+    entity:
+      integration: youtube_lounge
+      domain: media_player
+  fields:
+    language_code:
+      required: false
+      example: 'en'
+      default: null

@@ -1,0 +1,10 @@
+{
+    "services": {
+        "reconnect": {
+            "service": "mdi:cloud-refresh"
+        },
+        "select_subtitle_track": {
+            "service": "mdi:subtitles"
+        }
+    }
+}

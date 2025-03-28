@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import asyncio
-from asyncio import Task
 import datetime as dt
-from typing import TypedDict
-
-from aiogoogle import Aiogoogle
-from pyytlounge import PlaybackState, State as YtState, YtLoungeApi, get_thumbnail_url
+from asyncio import Task
+from typing import Any, Awaitable, Callable, Mapping, TypedDict
 
 import homeassistant
+import homeassistant.util
+import voluptuous as vol
+from aiogoogle import Aiogoogle
 from homeassistant.components.media_player import (
     MediaPlayerDeviceClass,
     MediaPlayerEntity,
@@ -19,13 +19,30 @@ from homeassistant.components.media_player import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import (
     AddEntitiesCallback,
     async_get_current_platform,
 )
+from pyytlounge import (
+    EventListener,
+    PlaybackStateEvent,
+    YtLoungeApi,
+    get_thumbnail_url,
+)
+from pyytlounge import (
+    State as YtState,
+)
+from pyytlounge.events import NowPlayingEvent
 
-from .const import DOMAIN, LOGGER, SERVICE_RECONNECT
+from .const import (
+    ATTR_LANGUAGE_CODE,
+    DOMAIN,
+    LOGGER,
+    SERVICE_RECONNECT,
+    SERVICE_SELECT_SUBTITLE_TRACK,
+)
 
 
 async def async_setup_entry(
@@ -40,6 +57,11 @@ async def async_setup_entry(
     platform = async_get_current_platform()
 
     platform.async_register_entity_service(SERVICE_RECONNECT, {}, "manual_reconnect")
+    platform.async_register_entity_service(
+        SERVICE_SELECT_SUBTITLE_TRACK,
+        {vol.Optional(ATTR_LANGUAGE_CODE): cv.string},
+        "select_subtitle_track",
+    )
 
 
 class _VideoSnippet(TypedDict):
@@ -65,6 +87,52 @@ class _VideoInfo:
         self.channel_title = snippet["channelTitle"]
 
 
+class YtEventListener(EventListener):
+    def __init__(
+        self, entity: MediaPlayerEntity, video_changed: Callable[[str], Awaitable[Any]]
+    ):
+        self._entity = entity
+        self._video_changed = video_changed
+        self.video_id: str | None = None
+        self.state = YtState.Stopped
+        self.current_time: int | None = None
+        self.duration: int | None = None
+        self.volume: float | None = None
+        self.muted: bool | None = None
+        self.position_updated_at = homeassistant.util.dt.utcnow()
+
+    def reset(self):
+        self.video_id = None
+        self.state = None
+        self.current_time = None
+        self.duration = None
+        self.volume = None
+        self.muted = None
+        self.position_updated_at = None
+
+    def copy_state(self, event: PlaybackStateEvent | NowPlayingEvent):
+        self.state = event.state
+        self.current_time = event.current_time
+        self.position_updated_at = homeassistant.util.dt.utcnow()
+        self.duration = event.duration
+
+    async def playback_state_changed(self, event):
+        self.copy_state(event)
+        self._entity.async_write_ha_state()
+
+    async def now_playing_changed(self, event):
+        self.copy_state(event)
+        if event.video_id != self.video_id:
+            self.video_id = event.video_id
+            await self._video_changed()
+        self._entity.async_write_ha_state()
+
+    async def volume_changed(self, event):
+        self.volume = event.volume
+        self.muted = event.muted
+        self._entity.async_write_ha_state()
+
+
 CONNECT_RETRY_INTERVAL = 10
 ERROR_RETRY_INTERVAL = 30
 SUBSCRIBE_RETRY_INTERVAL = 1
@@ -82,15 +150,15 @@ class YtMediaPlayer(MediaPlayerEntity):
         self._google_api_key = api_key
         self._yt_api = None
 
-        self._state_time = homeassistant.util.dt.utcnow()
-        self._state: PlaybackState | None = None
         self._video_info: _VideoInfo | None = None
+        self._yt_listener = YtEventListener(self, self._update_video_snippet)
+        api.event_listener = self._yt_listener
         self._subscription: Task | None = None
 
     async def _setup_youtube_api(self):
         async with Aiogoogle(api_key=self._google_api_key) as aiogoogle:
             self._yt_api = await aiogoogle.discover("youtube", "v3")
-        if self._state and self._state.videoId:
+        if self._yt_listener.video_id:
             await self._update_video_snippet()
             self.async_write_ha_state()
 
@@ -115,13 +183,13 @@ class YtMediaPlayer(MediaPlayerEntity):
         while True:
             while not self._api.connected():
                 LOGGER.debug("subscribe_and_keep_alive: reconnecting")
-                await self._new_state(None)
+                self._yt_listener.reset()
                 await asyncio.sleep(CONNECT_RETRY_INTERVAL)
                 if not self._api.linked():
                     await self._api.refresh_auth()
                 await self._api.connect()
             LOGGER.debug("subscribe_and_keep_alive: subscribing")
-            await self._api.subscribe(self._new_state)
+            await self._api.subscribe()
             await asyncio.sleep(SUBSCRIBE_RETRY_INTERVAL)
 
     async def manual_reconnect(self):
@@ -138,6 +206,16 @@ class YtMediaPlayer(MediaPlayerEntity):
         self._subscription = self._entry.async_create_background_task(
             self.hass, self._subscription_task(), "Subscription"
         )
+
+    async def select_subtitle_track(self, language_code: str | None):
+        """Select subtitle track based on language code"""
+        if self._yt_listener.video_id:
+            return await self._api.set_closed_captions(
+                language_code=language_code,
+                video_id=self._yt_listener.video_id,
+            )
+        LOGGER.warning("select_subtitle_track: no video currently playing")
+        return False
 
     async def async_added_to_hass(self) -> None:
         """Connect and subscribe to dispatcher signals and state updates."""
@@ -160,25 +238,16 @@ class YtMediaPlayer(MediaPlayerEntity):
             self._subscription = None
 
     async def _update_video_snippet(self):
-        if self._yt_api and self._state and self._state.videoId:
-            if self._video_info and self._state.videoId == self._video_info.id:
-                return  # already have this video info
-
+        if self._yt_api and self._yt_listener.video_id:
             async with Aiogoogle(api_key=self._google_api_key) as aiogoogle:
                 request = self._yt_api.videos.list(
-                    part="snippet", id=self._state.videoId
+                    part="snippet", id=self._yt_listener.video_id
                 )
                 response = await aiogoogle.as_api_key(request)
                 snippet = response["items"][0]["snippet"]
-                self._video_info = _VideoInfo(self._state.videoId, snippet)
+                self._video_info = _VideoInfo(self._yt_listener.video_id, snippet)
         else:
             self._video_info = None
-
-    async def _new_state(self, state: PlaybackState | None):
-        self._state_time = homeassistant.util.dt.utcnow()
-        self._state = state
-        await self._update_video_snippet()
-        self.async_write_ha_state()
 
     @property
     def unique_id(self) -> str | None:
@@ -199,18 +268,18 @@ class YtMediaPlayer(MediaPlayerEntity):
     @property
     def state(self) -> MediaPlayerState:
         """State of the player."""
-        if not self._state:
+        if not self._yt_listener.state:
             return MediaPlayerState.OFF
-        if self._state.state in [
+        if self._yt_listener.state in [
             YtState.Playing,
             YtState.Starting,
             YtState.Buffering,
             YtState.Advertisement,
         ]:
             return MediaPlayerState.PLAYING
-        if self._state.state == YtState.Paused:
+        if self._yt_listener.state == YtState.Paused:
             return MediaPlayerState.PAUSED
-        if self._state.state == YtState.Stopped:
+        if self._yt_listener.state == YtState.Stopped:
             return MediaPlayerState.ON
         return MediaPlayerState.OFF
 
@@ -223,6 +292,7 @@ class YtMediaPlayer(MediaPlayerEntity):
             | MediaPlayerEntityFeature.PREVIOUS_TRACK
             | MediaPlayerEntityFeature.NEXT_TRACK
             | MediaPlayerEntityFeature.SEEK
+            | MediaPlayerEntityFeature.VOLUME_SET
         )
 
     @property
@@ -252,7 +322,11 @@ class YtMediaPlayer(MediaPlayerEntity):
     @property
     def media_position(self) -> int | None:
         """Position of current playing media in seconds."""
-        return self._state and int(self._state.currentTime) or None
+        return (
+            self._yt_listener.current_time
+            and int(self._yt_listener.current_time)
+            or None
+        )
 
     @property
     def media_position_updated_at(self) -> dt.datetime | None:
@@ -260,20 +334,30 @@ class YtMediaPlayer(MediaPlayerEntity):
 
         Returns value from homeassistant.util.dt.utcnow().
         """
-        return self._state and self._state_time or None
+        return self._yt_listener.position_updated_at
 
     @property
     def media_duration(self) -> int | None:
         """Duration of current playing media in seconds."""
-        return self._state and int(self._state.duration) or None
+        return self._yt_listener.duration and int(self._yt_listener.duration) or None
 
     @property
     def media_image_url(self) -> str | None:
         """Image url of current playing media."""
-        if self._state and self._state.videoId:
-            return get_thumbnail_url(self._state.videoId)
+        if self._yt_listener.video_id:
+            return get_thumbnail_url(self._yt_listener.video_id)
 
         return None
+
+    @property
+    def volume_level(self) -> float | None:
+        """Volume level of the media player (0..1)."""
+        return self._yt_listener.volume
+
+    @property
+    def is_volume_muted(self) -> bool | None:
+        """Boolean if volume is currently muted."""
+        return self._yt_listener.muted
 
     async def async_media_pause(self) -> None:
         """Send pause command."""
@@ -294,3 +378,17 @@ class YtMediaPlayer(MediaPlayerEntity):
     async def async_media_seek(self, position: float) -> None:
         """Send seek command."""
         return await self._api.seek_to(position)
+
+    async def async_set_volume_level(self, volume: float) -> None:
+        """Set volume level, range 0..1."""
+        self.extra_state_attributes
+        return await self._api.set_volume(volume)
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return entity specific state attributes.
+
+        Implemented by platform classes. Convention for attribute names
+        is lowercase snake_case.
+        """
+        return {"subtitle_track": "unknown"}

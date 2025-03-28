@@ -39,6 +39,16 @@
     "reconnect": {
       "name": "Reconnect",
       "description": "Refresh authorization for when the connection is stuck."
+    },
+    "select_subtitle_track": {
+      "name": "Select subtitle track",
+      "description": "Select a subtitle track based on language code.",
+      "fields": {
+        "language_code": {
+          "name": "Language code",
+          "description": "The BCP-47 language code to select. Leave empty to disable subtitles."
+        }
+      }
     }
   }
 }
