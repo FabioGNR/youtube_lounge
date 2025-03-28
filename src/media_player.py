@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime as dt
+import math
 from asyncio import Task
 from typing import Any, Awaitable, Callable, Mapping, TypedDict
 
@@ -128,7 +129,7 @@ class YtEventListener(EventListener):
         self._entity.async_write_ha_state()
 
     async def volume_changed(self, event):
-        self.volume = event.volume
+        self.volume = event.volume / 100
         self.muted = event.muted
         self._entity.async_write_ha_state()
 
@@ -382,7 +383,7 @@ class YtMediaPlayer(MediaPlayerEntity):
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level, range 0..1."""
         self.extra_state_attributes
-        return await self._api.set_volume(volume)
+        return await self._api.set_volume(math.floor(volume * 100))
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
