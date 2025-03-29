@@ -6,7 +6,7 @@
   "documentation": "https://www.home-assistant.io/integrations/youtube_lounge",
   "integration_type": "device",
   "requirements": [
-    "pyytlounge~=3.0.1",
+    "pyytlounge~=3.1.0",
     "aiogoogle==5.1.0"
   ],
   "ssdp": [

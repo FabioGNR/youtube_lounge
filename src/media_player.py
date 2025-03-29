@@ -101,6 +101,7 @@ class YtEventListener(EventListener):
         self.volume: float | None = None
         self.muted: bool | None = None
         self.position_updated_at = homeassistant.util.dt.utcnow()
+        self.subtitle_track: str | None = None
 
     def reset(self):
         self.video_id = None
@@ -110,6 +111,7 @@ class YtEventListener(EventListener):
         self.volume = None
         self.muted = None
         self.position_updated_at = None
+        self.subtitle_track = None
 
     def copy_state(self, event: PlaybackStateEvent | NowPlayingEvent):
         self.state = event.state
@@ -131,6 +133,10 @@ class YtEventListener(EventListener):
     async def volume_changed(self, event):
         self.volume = event.volume / 100
         self.muted = event.muted
+        self._entity.async_write_ha_state()
+
+    async def subtitles_track_changed(self, event):
+        self.subtitle_track = event.language_code
         self._entity.async_write_ha_state()
 
 
@@ -392,4 +398,4 @@ class YtMediaPlayer(MediaPlayerEntity):
         Implemented by platform classes. Convention for attribute names
         is lowercase snake_case.
         """
-        return {"subtitle_track": "unknown"}
+        return {"subtitle_track": self._yt_listener.subtitle_track}
