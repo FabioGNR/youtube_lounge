@@ -9,14 +9,13 @@ This is a custom integration for [Home Assistant](https://www.home-assistant.io/
 
 ## Installation
 
-`youtube_lounge` is available through [HACS](https://hacs.xyz/). Search for "YouTube Lounge".
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=FabioGNR&repository=youtube_lounge)
 
 ## Setup
 
-After installing the integration, go to Configuration -> Integrations, click
-the + button at the bottom right, and search for "YouTube Lounge".
+After installing the integration, screens in your network should be automatically discovered if they support DIAL.
+If not, go to Configuration -> Integrations, click the + button at the bottom right, and search for "YouTube Lounge" to add a screen through a pairing code.
 
-The media player can be added either through manual pairing (pairing code) or through discovery using DIAL.
 Optionally a YouTube v3 API token can be configured which is used to retrieve information about the playing video.
 
 ## Services
