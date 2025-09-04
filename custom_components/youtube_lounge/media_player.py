@@ -115,8 +115,9 @@ class YtEventListener(EventListener):
 
     def copy_state(self, event: PlaybackStateEvent | NowPlayingEvent):
         self.state = event.state
-        self.current_time = event.current_time
-        self.position_updated_at = homeassistant.util.dt.utcnow()
+        if event.current_time is not None:
+            self.current_time = event.current_time
+            self.position_updated_at = homeassistant.util.dt.utcnow()
         self.duration = event.duration
 
     async def playback_state_changed(self, event):
@@ -128,6 +129,8 @@ class YtEventListener(EventListener):
         if event.video_id != self.video_id:
             self.video_id = event.video_id
             await self._video_changed()
+        if not self.video_id:
+            self.current_time = None
         self._entity.async_write_ha_state()
 
     async def volume_changed(self, event):
@@ -329,11 +332,7 @@ class YtMediaPlayer(MediaPlayerEntity):
     @property
     def media_position(self) -> int | None:
         """Position of current playing media in seconds."""
-        return (
-            self._yt_listener.current_time
-            and int(self._yt_listener.current_time)
-            or None
-        )
+        return self._yt_listener.current_time
 
     @property
     def media_position_updated_at(self) -> dt.datetime | None:
@@ -346,7 +345,7 @@ class YtMediaPlayer(MediaPlayerEntity):
     @property
     def media_duration(self) -> int | None:
         """Duration of current playing media in seconds."""
-        return self._yt_listener.duration and int(self._yt_listener.duration) or None
+        return self._yt_listener.duration
 
     @property
     def media_image_url(self) -> str | None:
