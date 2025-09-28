@@ -19,7 +19,7 @@ from homeassistant.components.media_player import (
     MediaPlayerState,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import (
@@ -31,10 +31,9 @@ from pyytlounge import (
     PlaybackStateEvent,
     YtLoungeApi,
     get_thumbnail_url,
-)
-from pyytlounge import (
     State as YtState,
 )
+from pyytlounge.exceptions import NotConnectedException
 from pyytlounge.events import NowPlayingEvent
 
 from .const import (
@@ -158,12 +157,12 @@ class YtMediaPlayer(MediaPlayerEntity):
         self._entry = entry
         self._api = api
         self._google_api_key = api_key
-        self._yt_api = None
+        self._yt_api: Any = None
 
         self._video_info: _VideoInfo | None = None
         self._yt_listener = YtEventListener(self, self._update_video_snippet)
         api.event_listener = self._yt_listener
-        self._subscription: Task | None = None
+        self._subscription: Task[None] | None = None
 
     async def _setup_youtube_api(self):
         async with Aiogoogle(api_key=self._google_api_key) as aiogoogle:
@@ -367,28 +366,45 @@ class YtMediaPlayer(MediaPlayerEntity):
 
     async def async_media_pause(self) -> None:
         """Send pause command."""
-        return await self._api.pause()
+        try:
+            await self._api.pause()
+        except NotConnectedException as ex:
+            raise HomeAssistantError from ex
 
     async def async_media_play(self) -> None:
         """Send play command."""
-        return await self._api.play()
+        try:
+            await self._api.play()
+        except NotConnectedException as ex:
+            raise HomeAssistantError from ex
 
     async def async_media_previous_track(self) -> None:
         """Send previous track command."""
-        return await self._api.previous()
+        try:
+            await self._api.previous()
+        except NotConnectedException as ex:
+            raise HomeAssistantError from ex
 
     async def async_media_next_track(self) -> None:
         """Send next track command."""
-        return await self._api.next()
+        try:
+            await self._api.next()
+        except NotConnectedException as ex:
+            raise HomeAssistantError from ex
 
     async def async_media_seek(self, position: float) -> None:
         """Send seek command."""
-        return await self._api.seek_to(position)
+        try:
+            await self._api.seek_to(position)
+        except NotConnectedException as ex:
+            raise HomeAssistantError from ex
 
     async def async_set_volume_level(self, volume: float) -> None:
         """Set volume level, range 0..1."""
-        self.extra_state_attributes
-        return await self._api.set_volume(math.floor(volume * 100))
+        try:
+            await self._api.set_volume(math.floor(volume * 100))
+        except NotConnectedException as ex:
+            raise HomeAssistantError from ex
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
